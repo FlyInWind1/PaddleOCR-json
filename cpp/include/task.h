@@ -86,10 +86,13 @@ namespace PaddleOCR
         cv::Mat imread_u8(std::string path, int flag = cv::IMREAD_COLOR); // 代替cv imread，输入utf-8字符串，返回Mat。失败时设置错误码，并返回空Mat。 
         cv::Mat imread_clipboard(int flag = cv::IMREAD_COLOR); // 从当前剪贴板中读取图片 
         cv::Mat imread_base64(std::string&, int flag = cv::IMREAD_COLOR); // 输入base64编码的字符串，返回Mat 
-#ifdef _WIN32
-        cv::Mat imread_wstr(std::wstring pathW, int flags = cv::IMREAD_COLOR); // 输入unicode wstring字符串，返回Mat。 
-#endif
+//#ifdef _WIN32
+        cv::Mat imread_wstr(std::wstring pathW, std::string *pathU8p, int flag); // 输入unicode wstring字符串，返回Mat。
+//#endif
     };
+
+    std::string msg_wstr_2_ustr(std::wstring &msg);
+    bool is_exists_wstr(std::wstring pathW);
 
 } // namespace PaddleOCR
 

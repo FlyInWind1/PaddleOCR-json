@@ -3,15 +3,11 @@
 
 #ifdef _WIN32
 
-#include "include/paddleocr.h"
-#include "include/args.h"
-#include "include/task.h"
-// 剪贴板和套接字 
+#include "task_common.cpp"
+
+// 剪贴板和套接字
 #include <windows.h>
-// 编码转换
-#include <codecvt>
-std::wstring_convert<std::codecvt_utf8<wchar_t>> conv_Ustr_Wstr; // string utf-8 与 wstring utf-16 的双向转换器
-// 套接字 
+// 套接字
 #pragma comment(lib, "ws2_32.lib")
 
 namespace PaddleOCR
@@ -30,54 +26,26 @@ namespace PaddleOCR
         return wc;
     }
 
-    // 专门用于消息的wstring转string，转换失败时返回默认提示文字 
-    std::string msg_wstr_2_ustr(std::wstring &msg)
-    {
-        try
-        {
-            std::string msgU8 = conv_Ustr_Wstr.to_bytes(msg); // 转回u8
-            return msgU8;
-        }
-        catch (...)
-        {
-            return "wstring failed to convert to utf-8 string";
-        }
-    }
-
-    // 检查路径pathW是否为文件，是返回true
-    bool is_exists_wstr(std::wstring pathW)
-    {
-        struct _stat buf;
-        int result = _wstat((wchar_t *)pathW.c_str(), &buf);
-        if (result != 0)
-        { // 发生错误
-            return false;
-        }
-        if (S_IFREG & buf.st_mode)
-        { // 是文件
-            return true;
-        }
-        // else if (S_IFDIR & buf.st_mode) { // 是目录
-        // return false;
-        // }
-        return false;
-    }
-
     // ==================== 类的实现 ====================
 
     // 代替 cv::imread ，从路径pathW读入一张图片。pathW必须为unicode的wstring
-    cv::Mat Task::imread_wstr(std::wstring pathW, int flag)
+    cv::Mat Task::imread_wstr(std::wstring pathW, std::string *pathU8p, int flag)
     {
-        std::string pathU8 = msg_wstr_2_ustr(pathW); // 再转回utf-8，以备输出错误。 
-        // ↑ 由于这个函数要被剪贴板CF_UNICODETEXT等复用，可能调用方只能提供wstring，所以多此一举转换一次。 
+        std::string pathU8;
+        if (pathU8p == nullptr) {
+            pathU8 = msg_wstr_2_ustr(pathW); // 再转回utf-8，以备输出错误。
+            // ↑ 由于这个函数要被剪贴板CF_UNICODETEXT等复用，可能调用方只能提供wstring，所以多此一举转换一次。
+        } else {
+            pathU8 = *pathU8p;
+        }
         if (!is_exists_wstr(pathW))
-        {                                                               // 路径不存在 
+        {                                                               // 路径不存在
             set_state(CODE_ERR_PATH_EXIST, MSG_ERR_PATH_EXIST(pathU8)); // 报告状态：路径不存在且无法输出 
             return cv::Mat();
         }
-        FILE *fp = _wfopen((wchar_t *)pathW.c_str(), L"rb"); // wpath强制类型转换到whar_t，尝试打开文件 
+        FILE *fp = _wfopen((wchar_t *)pathW.c_str(), L"rb"); // wpath强制类型转换到whar_t，尝试打开文件
         if (!fp)
-        {                                                             // 打开失败 
+        {                                                             // 打开失败
             set_state(CODE_ERR_PATH_READ, MSG_ERR_PATH_READ(pathU8)); // 报告状态：无法读取 
             return cv::Mat();
         }
@@ -96,25 +64,6 @@ namespace PaddleOCR
             set_state(CODE_ERR_PATH_DECODE, MSG_ERR_PATH_DECODE(pathU8)); // 报告状态：解码失败 
         }
         return img;
-    }
-
-
-    // 代替cv imread，接收utf-8字符串传入，返回Mat。
-    cv::Mat Task::imread_u8(std::string pathU8, int flag)
-    {
-        if (pathU8 == u8"clipboard") { // 若为剪贴板任务 
-            return imread_clipboard(flag);
-        }
-        // string u8 转 wchar_t
-        std::wstring wpath;
-        try {
-            wpath = conv_Ustr_Wstr.from_bytes(pathU8); // 利用转换器转换
-        }
-        catch (...) {
-            set_state(CODE_ERR_PATH_CONV, MSG_ERR_PATH_CONV(pathU8)); // 报告状态：转wstring失败
-            return cv::Mat();
-        }
-        return imread_wstr(wpath);
     }
 
     // 从剪贴板读入一张图片，返回Mat。注意flag对剪贴板内存图片无效，仅对剪贴板路径图片有效。
@@ -210,7 +159,7 @@ namespace PaddleOCR
                     UINT lenChar = DragQueryFile(hClip, i, NULL, 0); // 2.4. 得到第i个文件名读入所需缓冲区的大小（字节）
                     wchar_t *nameW = new wchar_t[lenChar + 1];       // 存放文件名的字节内容
                     DragQueryFileW(hClip, i, nameW, lenChar + 1);    // 2.5. 读入第i个文件名
-                    cv::Mat mat = imread_wstr(nameW, flag);          // 2.6. 尝试读取文件
+                    cv::Mat mat = imread_wstr(nameW, nullptr, flag);          // 2.6. 尝试读取文件
                     // 释放资源
                     delete[] nameW;
                     GlobalUnlock(hClip); // 2.x.1 释放文件列表句柄
@@ -252,7 +201,7 @@ namespace PaddleOCR
         // 配置地址和端口号 
         struct sockaddr_in addr;
         addr.sin_family = AF_INET; // 地址族：IPv4 
-        addr.sin_addr.s_addr = (FLAGS_addr=="loopback" ? htonl(INADDR_LOOPBACK) : INADDR_ANY); // IP地址模式：本地环回/任何可用 
+        addr.sin_addr.s_addr = (FLAGS_addr=="loopback" ? htonl(INADDR_LOOPBACK) : INADDR_ANY); // IP地址模式：本地环回/任何可用
         addr.sin_port = htons(FLAGS_port); // 端口号 
         // 绑定地址和端口号到套接字句柄server_fd
         if (bind(server_fd, (struct sockaddr*)&addr, sizeof(addr)) == SOCKET_ERROR) {
@@ -278,7 +227,7 @@ namespace PaddleOCR
             return -1;
         }
         int server_port = ntohs(server_addr.sin_port); // 获取端口号  
-        char* server_ip = inet_ntoa(addr.sin_addr); // 获取ip地址  
+        char* server_ip = inet_ntoa(addr.sin_addr); // 获取ip地址
         //int server_port = ntohs(addr.sin_port);
         std::cout << "Socket init completed. " << server_ip << ":" << server_port << std::endl;
 

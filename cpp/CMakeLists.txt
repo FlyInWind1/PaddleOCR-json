@@ -1,5 +1,5 @@
-project(ppocr CXX C)
 cmake_minimum_required(VERSION 3.14)
+project(ppocr CXX C)
 
 option(WITH_MKL        "Compile demo with MKL/OpenBlas support, default use MKL."       ON)
 option(WITH_GPU        "Compile demo with GPU/CPU, default use CPU."                    OFF)
@@ -14,6 +14,10 @@ SET(TENSORRT_DIR "" CACHE PATH "Compile demo with TensorRT")
 
 set(DEMO_NAME "ppocr")
 
+find_program(CCACHE_PROGRAM ccache)
+if (CCACHE_PROGRAM)
+    set_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE "${CCACHE_PROGRAM}")
+endif ()
 
 macro(safe_set_static_flag)
     foreach(flag_var
@@ -44,7 +48,7 @@ if (WIN32)
   find_package(OpenCV REQUIRED PATHS ${OPENCV_DIR}/build/ NO_DEFAULT_PATH)
 
 else ()
-  find_package(OpenCV REQUIRED PATHS ${OPENCV_DIR}/share/OpenCV NO_DEFAULT_PATH)
+  find_package(OpenCV REQUIRED)
   include_directories("${PADDLE_LIB}/paddle/include")
   link_directories("${PADDLE_LIB}/paddle/lib")
 endif ()
@@ -71,7 +75,7 @@ else()
     if(WITH_MKL)
         set(FLAG_OPENMP "-fopenmp")
     endif()
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -o3 ${FLAG_OPENMP} -std=c++11")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -O3 ${FLAG_OPENMP} -std=c++17")
     set(CMAKE_STATIC_LIBRARY_PREFIX "")
     message("cmake cxx flags" ${CMAKE_CXX_FLAGS})
 endif()
@@ -94,6 +98,7 @@ include_directories("${PADDLE_LIB}/third_party/install/xxhash/include")
 include_directories("${PADDLE_LIB}/third_party/install/zlib/include")
 include_directories("${PADDLE_LIB}/third_party/install/onnxruntime/include")
 include_directories("${PADDLE_LIB}/third_party/install/paddle2onnx/include")
+include_directories("${PADDLE_LIB}/third_party/install/utf8proc/include")
 include_directories("${PADDLE_LIB}/third_party/boost")
 include_directories("${PADDLE_LIB}/third_party/eigen3")
 
@@ -106,6 +111,7 @@ if (NOT WIN32)
   endif()
 endif(NOT WIN32)
 
+link_directories("${PADDLE_LIB}/third_party/install/cryptopp/lib")
 link_directories("${PADDLE_LIB}/third_party/install/zlib/lib")
 
 link_directories("${PADDLE_LIB}/third_party/install/protobuf/lib")
@@ -114,6 +120,7 @@ link_directories("${PADDLE_LIB}/third_party/install/gflags/lib")
 link_directories("${PADDLE_LIB}/third_party/install/xxhash/lib")
 link_directories("${PADDLE_LIB}/third_party/install/onnxruntime/lib")
 link_directories("${PADDLE_LIB}/third_party/install/paddle2onnx/lib")
+link_directories("${PADDLE_LIB}/third_party/install/utf8proc/lib")
 link_directories("${PADDLE_LIB}/paddle/lib")
 
 
@@ -125,7 +132,8 @@ if(WITH_MKL)
   else ()
     set(MATH_LIB ${PADDLE_LIB}/third_party/install/mklml/lib/libmklml_intel${CMAKE_SHARED_LIBRARY_SUFFIX}
             ${PADDLE_LIB}/third_party/install/mklml/lib/libiomp5${CMAKE_SHARED_LIBRARY_SUFFIX})
-    execute_process(COMMAND cp -r ${PADDLE_LIB}/third_party/install/mklml/lib/libmklml_intel${CMAKE_SHARED_LIBRARY_SUFFIX} /usr/lib)
+#    execute_process(COMMAND cp -r ${PADDLE_LIB}/third_party/install/mklml/lib/libmklml_intel${CMAKE_SHARED_LIBRARY_SUFFIX} /usr/lib)
+#    link_libraries(${PADDLE_LIB}/third_party/install/mklml/lib/libmklml_intel${CMAKE_SHARED_LIBRARY_SUFFIX})
   endif ()
   set(MKLDNN_PATH "${PADDLE_LIB}/third_party/install/mkldnn")
   if(EXISTS ${MKLDNN_PATH})
@@ -205,7 +213,16 @@ endif()
 
 
 if (NOT WIN32)
-    set(EXTERNAL_LIB "-ldl -lrt -lgomp -lz -lm -lpthread")
+    set(EXTERNAL_LIB "-ldl -lrt -lgomp -lz -lm -lpthread"
+            cryptopp
+#            gflags
+#            glog
+#            mkldnn
+#            mklml
+            onnxruntime
+            paddle2onnx
+            utf8proc
+    )
     set(DEPS ${DEPS} ${EXTERNAL_LIB})
 endif()
 
